@@ -8,11 +8,13 @@ pyproj==3.7.0
 
 # Data & numerics
 numpy==2.2.1
-pandas==2.2.3
+pandas==2.3.3
 scipy==1.14.1
 
 # Visualization
 matplotlib==3.9.4
+plotly==5.24.1
+streamlit==1.43.0
 
 # Configuration
 pyyaml==6.0.2
