@@ -28,6 +28,7 @@ credentials.*
 *.tiff
 *.tif.gz
 *.geojson
+!data/raw/kenya_counties.geojson
 *.gpkg
 *.shp
 *.shx
@@ -46,6 +47,8 @@ outputs/maps/*.png
 outputs/reports/*.csv
 !outputs/maps/.gitkeep
 !outputs/reports/.gitkeep
+# Dashboard data — committed so Streamlit Cloud can read them without DVC
+!outputs/reports/county_risk_report.csv
 
 # Processed intermediates (keep directory markers, ignore contents)
 # DVC manages the actual files via *.dvc pointer files
@@ -55,6 +58,7 @@ data/processed/*
 data/raw/*
 !data/raw/.gitkeep
 !data/raw/*.dvc
+!data/raw/kenya_counties.geojson
 
 # IDEs
 .vscode/

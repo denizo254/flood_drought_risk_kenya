@@ -1,15 +1,15 @@
 # Core geospatial
-geopandas==1.0.1
-rasterio==1.4.3
+geopandas==1.1.2
+rasterio==1.5.0
 rasterstats==0.20.0
-shapely==2.0.6
+shapely==2.1.2
 fiona==1.10.1
 pyproj==3.7.0
 
 # Data & numerics
-numpy==2.2.1
+numpy==2.4.2
 pandas==2.3.3
-scipy==1.14.1
+scipy==1.17.1
 
 # Visualization
 matplotlib==3.9.4
