@@ -2,7 +2,6 @@
 import json
 from pathlib import Path
 
-import geopandas as gpd
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -23,11 +22,12 @@ RISK_COLORS = {"High": "#d73027", "Medium": "#f9a825", "Low": "#388e3c"}
 @st.cache_data
 def load_data():
     df = pd.read_csv(ROOT / "outputs" / "reports" / "county_risk_report.csv")
-    gdf = gpd.read_file(ROOT / "data" / "raw" / "kenya_counties.geojson")[["shapeName", "geometry"]]
-    # Use shapeName as GeoJSON feature id so featureidkey="id" works
-    geojson = json.loads(gdf.set_index("shapeName").to_json())
-    merged = gdf.merge(df, on="shapeName", how="left")
-    return df, merged, geojson
+    with open(ROOT / "data" / "raw" / "kenya_counties.geojson") as f:
+        geojson = json.load(f)
+    # Stamp each feature's id with shapeName so featureidkey="id" works
+    for feat in geojson["features"]:
+        feat["id"] = feat["properties"]["shapeName"]
+    return df, geojson
 
 
 def _minmax(series, val):
@@ -41,7 +41,7 @@ def _norm_col(series):
 
 
 # ── Load ──────────────────────────────────────────────────────────────────────
-df, gdf, geojson = load_data()
+df, geojson = load_data()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -77,8 +77,7 @@ st.divider()
 map_col, rank_col = st.columns([3, 2])
 
 with map_col:
-    # gdf is already the merged GeoDataFrame — just filter by selected categories
-    map_df = gdf[gdf["risk_category"].isin(selected_cats)].copy()
+    map_df = filtered.copy()
     fig_map = px.choropleth_mapbox(
         map_df,
         geojson=geojson,
