@@ -1,0 +1,63 @@
+project:
+  name: "Flood-Drought Risk Kenya"
+  version: "1.0.0"
+  crs: "EPSG:4326"
+  author: "Laono Denis"
+
+paths:
+  raw_data: "data/raw"
+  processed_data: "data/processed"
+  outputs: "outputs"
+  maps: "outputs/maps"
+  reports: "outputs/reports"
+  checksums: "data/checksums"
+
+data:
+  counties_file: "kenya_counties.geojson"
+  rainfall_compressed: "rainfall_dec_2025.tif.gz"
+  rainfall_raw: "rainfall_dec_2025.tif"
+  rainfall_clipped: "rainfall_dec_2025_kenya.tif"
+  ndvi_file: "ndvi_current.tif"
+  ndvi_baseline_file: "ndvi_baseline.tif"
+  population_file: "population_density.tif"
+  dem_file: "srtm_dem.tif"
+  risk_report: "county_risk_report.csv"
+
+columns:
+  county_name: "shapeName"
+  county_id: "shapeID"
+  avg_rainfall: "avg_rainfall_mm"
+  rainfall_zscore: "rainfall_zscore"
+  ndvi_deviation: "ndvi_deviation"
+  pop_density: "pop_density_norm"
+  slope: "slope_norm"
+  risk_index: "composite_risk_index"
+  risk_category: "risk_category"
+
+# Weights must sum to 1.0
+risk_weights:
+  rainfall_zscore: 0.40
+  ndvi_deviation: 0.30
+  pop_density: 0.20
+  slope: 0.10
+
+# Risk category upper bounds (index score 0–1)
+risk_categories:
+  high: 0.7
+  medium: 0.4
+
+zonal_stats:
+  stats:
+    - mean
+    - max
+    - std
+    - min
+    - count
+  nodata: -9999
+
+ingestion:
+  chirps_base_url: "https://data.chc.ucsb.edu/products/CHIRPS-2.0/africa_monthly/tifs"
+  year: 2025
+  month: 12
+  timeout_seconds: 120
+  chunk_size: 8192

@@ -1,0 +1,22 @@
+# Core geospatial
+geopandas==1.0.1
+rasterio==1.4.3
+rasterstats==0.20.0
+shapely==2.0.6
+fiona==1.10.1
+pyproj==3.7.0
+
+# Data & numerics
+numpy==2.2.1
+pandas==2.2.3
+scipy==1.14.1
+
+# Visualization
+matplotlib==3.9.4
+
+# Configuration
+pyyaml==6.0.2
+
+# HTTP & utilities
+requests==2.32.3
+tqdm==4.67.1

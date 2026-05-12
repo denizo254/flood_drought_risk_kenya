@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# Environment & secrets
+.env
+.env.*
+*.env
+secrets.yaml
+credentials.*
+
+# Binary / large spatial data (never commit)
+*.tif
+*.tiff
+*.tif.gz
+*.geojson
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.sbn
+*.sbx
+*.cpg
+*.qpj
+*.nc
+*.hdf
+*.h5
+
+# Outputs (reproducible — regenerate from pipeline)
+outputs/maps/*.png
+outputs/reports/*.csv
+!outputs/maps/.gitkeep
+!outputs/reports/.gitkeep
+
+# Processed intermediates (keep directory markers, ignore contents)
+data/processed/*
+!data/processed/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
