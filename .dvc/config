@@ -1,5 +1,7 @@
 [core]
     remote = localremote
     autostage = true
+[cache]
+    dir = C:/Users/User/.dvc_cache/flood_kenya
 ['remote "localremote"']
     url = gdrive://1qv4TEAGW0Ra0isIGAHibCcCec3LeJwew

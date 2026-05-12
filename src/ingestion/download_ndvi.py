@@ -1,137 +1,118 @@
-"""Download MODIS MOD13A3 monthly NDVI for Kenya via NASA earthaccess.
+"""Download MODIS MOD13A1 NDVI for Kenya via Microsoft Planetary Computer.
 
-Requires a free NASA Earthdata account: https://urs.earthdata.nasa.gov/users/new
-Set credentials via env vars EARTHDATA_USERNAME and EARTHDATA_PASSWORD,
-or run interactively and the library will prompt you.
+Uses Cloud-Optimized GeoTIFFs — no HDF4, no NASA auth required.
+MOD13A1 = 500 m, 16-day composite. Monthly NDVI is computed as the
+mean of all 16-day composites that fall within the target month.
 """
-import os
-import tempfile
 import numpy as np
 import rasterio
 from rasterio.merge import merge as rio_merge
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.transform import array_bounds
+from collections import defaultdict
 from pathlib import Path
-import earthaccess
+import pystac_client
+import planetary_computer
 
 from src.ingestion.checksum import save_checksum, verify_checksum
 
-_SCALE_FACTOR = 0.0001
-_FILL_VALUE = -28672
+_PC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
+_COLLECTION = "modis-13A1-061"
+_NDVI_ASSET = "500m_16_days_NDVI"
+_SCALE = 0.0001
+_FILL = -28672
 _NODATA = -9999.0
-_NDVI_LAYER = "1 km monthly NDVI"
 
 
-# ── Auth ───────────────────────────────────────────────────────────────────────
-
-def _auth() -> None:
-    if os.environ.get("EARTHDATA_USERNAME") and os.environ.get("EARTHDATA_PASSWORD"):
-        earthaccess.login(strategy="environment")
-    else:
-        raise EnvironmentError(
-            "NASA Earthdata credentials not found.\n"
-            "  Free account: https://urs.earthdata.nasa.gov/users/new\n"
-            "  Then: set EARTHDATA_USERNAME=<user> and EARTHDATA_PASSWORD=<pass>"
-        )
+def _catalog() -> pystac_client.Client:
+    return pystac_client.Client.open(_PC_URL, modifier=planetary_computer.sign_inplace)
 
 
-# ── HDF4 helpers ───────────────────────────────────────────────────────────────
+def _month_ndvi_array(year: int, month: int, bbox: list, cat) -> tuple:
+    """
+    Search MOD13A1 items for a month, mosaic tiles per composite date,
+    then return the pixel-wise mean NDVI across all composites.
+    Returns (ndvi_array, src_crs, src_transform, h, w).
+    """
+    items = cat.search(
+        collections=[_COLLECTION],
+        bbox=bbox,
+        datetime=f"{year}-{month:02d}-01/{year}-{month:02d}-31",
+    ).item_collection()
 
-def _ndvi_subdataset(hdf_path: Path) -> str:
-    """Return the rasterio-compatible GDAL subdataset path for the NDVI layer."""
-    try:
-        with rasterio.open(str(hdf_path)) as ds:
-            for sub in ds.subdatasets:
-                if _NDVI_LAYER in sub:
-                    return sub
-    except Exception as exc:
-        raise RuntimeError(
-            f"Cannot open {hdf_path.name} as HDF4. "
-            "Ensure your GDAL build includes the HDF4 driver "
-            "(rasterio PyPI wheels on Windows include it by default)."
-        ) from exc
-    raise ValueError(f"No '{_NDVI_LAYER}' subdataset found in {hdf_path.name}")
+    if not items:
+        raise FileNotFoundError(f"No MOD13A1 items found for {year}-{month:02d}.")
+
+    # Group tiles by composite date (some items carry a range; fall back to start)
+    by_date = defaultdict(list)
+    for item in items:
+        dt = item.datetime or item.common_metadata.start_datetime
+        by_date[dt.strftime("%Y-%m-%d")].append(item)
+
+    composite_arrays, ref_crs, ref_transform, ref_h, ref_w = [], None, None, None, None
+
+    for date, date_items in by_date.items():
+        signed = [planetary_computer.sign(it) for it in date_items]
+        srcs = [rasterio.open(it.assets[_NDVI_ASSET].href) for it in signed]
+        try:
+            if len(srcs) > 1:
+                mosaic, transform = rio_merge(srcs)
+                raw = mosaic[0]
+                crs = srcs[0].crs
+            else:
+                raw = srcs[0].read(1)
+                transform = srcs[0].transform
+                crs = srcs[0].crs
+        finally:
+            for s in srcs:
+                s.close()
+
+        if ref_crs is None:
+            ref_crs, ref_transform = crs, transform
+            ref_h, ref_w = raw.shape
+
+        ndvi = np.where(raw == _FILL, np.nan, raw.astype(np.float32) * _SCALE)
+        composite_arrays.append(ndvi)
+
+    mean = np.nanmean(np.stack(composite_arrays), axis=0)
+    mean = np.where(np.isnan(mean), _NODATA, mean).astype(np.float32)
+    return mean, ref_crs, ref_transform, ref_h, ref_w
 
 
-def _hdf_tiles_to_geotiff(hdf_paths: list, output_path: Path) -> None:
-    """Mosaic MODIS HDF4 tiles → reproject to EPSG:4326 → save GeoTIFF."""
-    open_srcs = [rasterio.open(_ndvi_subdataset(p)) for p in hdf_paths]
-
-    try:
-        if len(open_srcs) > 1:
-            mosaic, transform = rio_merge(open_srcs)
-            raw = mosaic[0]
-            src_crs = open_srcs[0].crs
-            h, w = raw.shape
-        else:
-            raw = open_srcs[0].read(1)
-            transform = open_srcs[0].transform
-            src_crs = open_srcs[0].crs
-            h, w = raw.shape
-    finally:
-        for src in open_srcs:
-            src.close()
-
-    # Apply MODIS scale factor; replace fill with nodata sentinel
-    ndvi = np.where(
-        raw == _FILL_VALUE,
-        _NODATA,
-        raw.astype(np.float32) * _SCALE_FACTOR,
-    )
-
-    # Reproject sinusoidal → EPSG:4326
+def _save_geotiff(array: np.ndarray, src_crs, src_transform, h: int, w: int, output_path: Path) -> None:
+    """Reproject to EPSG:4326 and write GeoTIFF atomically."""
     dst_crs = "EPSG:4326"
-    bounds = array_bounds(h, w, transform)  # (west, south, east, north)
-    dst_transform, dst_w, dst_h = calculate_default_transform(
-        src_crs, dst_crs, w, h, *bounds
-    )
+    bounds = array_bounds(h, w, src_transform)
+    dst_transform, dst_w, dst_h = calculate_default_transform(src_crs, dst_crs, w, h, *bounds)
 
     reprojected = np.full((dst_h, dst_w), _NODATA, dtype=np.float32)
     reproject(
-        source=ndvi,
-        destination=reprojected,
-        src_transform=transform,
-        src_crs=src_crs,
-        dst_transform=dst_transform,
-        dst_crs=dst_crs,
+        source=array, destination=reprojected,
+        src_transform=src_transform, src_crs=src_crs,
+        dst_transform=dst_transform, dst_crs=dst_crs,
         resampling=Resampling.bilinear,
-        src_nodata=_NODATA,
-        dst_nodata=_NODATA,
+        src_nodata=_NODATA, dst_nodata=_NODATA,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(output_path, "w", **{
-        "driver": "GTiff", "dtype": "float32",
-        "crs": dst_crs, "transform": dst_transform,
-        "width": dst_w, "height": dst_h,
-        "count": 1, "nodata": _NODATA, "compress": "lzw",
-    }) as dst:
-        dst.write(reprojected, 1)
+    tmp_path = output_path.with_suffix(".tmp.tif")
+    try:
+        with rasterio.open(tmp_path, "w", **{
+            "driver": "GTiff", "dtype": "float32",
+            "crs": dst_crs, "transform": dst_transform,
+            "width": dst_w, "height": dst_h,
+            "count": 1, "nodata": _NODATA, "compress": "lzw",
+        }) as dst:
+            dst.write(reprojected, 1)
+        tmp_path.replace(output_path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
-
-# ── Download helpers ───────────────────────────────────────────────────────────
-
-def _download_month(year: int, month: int, save_dir: Path, bbox: list) -> list:
-    """Download MOD13A3 granules (HDF4) for one year/month over the bbox."""
-    results = earthaccess.search_data(
-        short_name="MOD13A3",
-        version="061",
-        temporal=(f"{year}-{month:02d}-01", f"{year}-{month:02d}-28"),
-        bounding_box=(bbox[0], bbox[1], bbox[2], bbox[3]),  # W, S, E, N
-    )
-    if not results:
-        raise FileNotFoundError(f"No MOD13A3 granules for {year}-{month:02d}.")
-    out_dir = save_dir / f"{year}_{month:02d}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    files = earthaccess.download(results, str(out_dir))
-    return [Path(f) for f in files]
-
-
-# ── Public entry point ─────────────────────────────────────────────────────────
 
 def ingest_ndvi(config: dict) -> tuple:
     """
-    Download and process MODIS MOD13A3 NDVI.
+    Download current + baseline NDVI from Planetary Computer (no auth needed).
     Returns (current_ndvi_path, baseline_ndvi_path).
     """
     raw_dir = Path(config["paths"]["raw_data"])
@@ -150,55 +131,51 @@ def ingest_ndvi(config: dict) -> tuple:
         print("  [skip] NDVI files already verified.")
         return current_path, baseline_path
 
-    _auth()
+    # Remove any corrupt remnants from a previous failed write.
+    for p in (current_path, baseline_path):
+        if p.exists() and not verify_checksum(p, checksum_dir):
+            print(f"  [warn] Removing corrupt/unverified file: {p.name}")
+            p.unlink()
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
+    cat = _catalog()
 
-        # Current month
-        if not (current_path.exists() and verify_checksum(current_path, checksum_dir)):
-            print(f"  Downloading current NDVI ({year}-{month:02d})...")
-            hdfs = _download_month(year, month, tmp_dir, bbox)
-            _hdf_tiles_to_geotiff(hdfs, current_path)
-            save_checksum(current_path, checksum_dir)
-            print(f"  [OK] Current NDVI saved: {current_path.name}")
+    # Current month — fall back to previous year if PC hasn't ingested it yet.
+    if not (current_path.exists() and verify_checksum(current_path, checksum_dir)):
+        actual_year = year
+        try:
+            print(f"  Downloading current NDVI ({year}-{month:02d}) from Planetary Computer...")
+            arr, crs, transform, h, w = _month_ndvi_array(year, month, bbox, cat)
+        except FileNotFoundError:
+            actual_year = year - 1
+            print(f"  [warn] {year}-{month:02d} not yet on Planetary Computer; using {actual_year}-{month:02d} as proxy.")
+            arr, crs, transform, h, w = _month_ndvi_array(actual_year, month, bbox, cat)
+        _save_geotiff(arr, crs, transform, h, w, current_path)
+        save_checksum(current_path, checksum_dir)
+        print(f"  [OK] Current NDVI saved: {current_path.name} (source year: {actual_year})")
 
-        # Baseline — mean over baseline_years for the same calendar month
-        if not (baseline_path.exists() and verify_checksum(baseline_path, checksum_dir)):
-            print(f"  Computing baseline NDVI ({baseline_years}, month={month:02d})...")
-            year_arrays = []
-            ref_profile = None
+    # Baseline: mean of same calendar month across baseline_years
+    if not (baseline_path.exists() and verify_checksum(baseline_path, checksum_dir)):
+        print(f"  Computing baseline NDVI ({baseline_years}, month={month:02d})...")
+        year_arrays, ref_crs, ref_transform, ref_h, ref_w = [], None, None, None, None
 
-            for by in baseline_years:
-                try:
-                    hdfs = _download_month(by, month, tmp_dir, bbox)
-                    tiff = tmp_dir / f"ndvi_{by}.tif"
-                    _hdf_tiles_to_geotiff(hdfs, tiff)
-                    with rasterio.open(tiff) as src:
-                        arr = src.read(1).astype(np.float32)
-                        arr = np.where(arr == _NODATA, np.nan, arr)
-                        year_arrays.append(arr)
-                        if ref_profile is None:
-                            ref_profile = src.profile.copy()
-                except Exception as exc:
-                    print(f"  [warn] NDVI {by} skipped: {exc}")
+        for by in baseline_years:
+            try:
+                arr, crs, transform, h, w = _month_ndvi_array(by, month, bbox, cat)
+                masked = np.where(arr == _NODATA, np.nan, arr)
+                year_arrays.append(masked)
+                if ref_crs is None:
+                    ref_crs, ref_transform, ref_h, ref_w = crs, transform, h, w
+                print(f"    {by} done.")
+            except Exception as exc:
+                print(f"  [warn] NDVI {by} skipped: {exc}")
 
-            if not year_arrays:
-                raise RuntimeError("Could not download any baseline NDVI years.")
+        if not year_arrays:
+            raise RuntimeError("No baseline NDVI years could be downloaded.")
 
-            baseline_mean = np.nanmean(np.stack(year_arrays), axis=0)
-            baseline_mean = np.where(
-                np.isnan(baseline_mean), _NODATA, baseline_mean
-            ).astype(np.float32)
-
-            ref_profile.update({"nodata": _NODATA, "compress": "lzw"})
-            baseline_path.parent.mkdir(parents=True, exist_ok=True)
-            with rasterio.open(baseline_path, "w", **ref_profile) as dst:
-                dst.write(baseline_mean, 1)
-            save_checksum(baseline_path, checksum_dir)
-            print(
-                f"  [OK] Baseline NDVI saved: {baseline_path.name} "
-                f"(n={len(year_arrays)} years)"
-            )
+        baseline = np.nanmean(np.stack(year_arrays), axis=0)
+        baseline = np.where(np.isnan(baseline), _NODATA, baseline).astype(np.float32)
+        _save_geotiff(baseline, ref_crs, ref_transform, ref_h, ref_w, baseline_path)
+        save_checksum(baseline_path, checksum_dir)
+        print(f"  [OK] Baseline NDVI saved: {baseline_path.name} (n={len(year_arrays)} years)")
 
     return current_path, baseline_path

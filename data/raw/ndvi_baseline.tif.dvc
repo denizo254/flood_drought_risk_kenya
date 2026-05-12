@@ -1,0 +1,5 @@
+outs:
+- md5: 81f89c50a21f2ce3db00571f7df812a7
+  size: 69575013
+  hash: md5
+  path: ndvi_baseline.tif

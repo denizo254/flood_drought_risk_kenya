@@ -21,5 +21,6 @@ pyyaml==6.0.2
 requests==2.32.3
 tqdm==4.67.1
 
-# NASA Earthdata access (MODIS NDVI)
-earthaccess==0.11.0
+# MODIS NDVI via Microsoft Planetary Computer (no auth required)
+planetary-computer==1.0.0
+pystac-client==0.9.0

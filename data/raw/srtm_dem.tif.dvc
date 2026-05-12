@@ -1,0 +1,5 @@
+outs:
+- md5: 61b234fbd1a5ca87a7c0305fa910b349
+  size: 104361297
+  hash: md5
+  path: srtm_dem.tif
