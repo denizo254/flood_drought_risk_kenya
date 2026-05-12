@@ -10,6 +10,9 @@ from pathlib import Path
 
 from src.ingestion.download_rainfall import ingest_rainfall
 from src.ingestion.download_boundaries import ingest_boundaries
+from src.ingestion.download_population import ingest_population
+from src.ingestion.download_dem import ingest_dem
+from src.ingestion.download_ndvi import ingest_ndvi
 from src.preprocessing.clip_raster import clip_raster_to_aoi
 from src.indicators.rainfall_anomaly import compute_rainfall_anomaly
 from src.indicators.ndvi_deviation import compute_ndvi_deviation
@@ -17,6 +20,14 @@ from src.indicators.population_density import compute_population_exposure
 from src.indicators.slope import compute_slope_susceptibility
 from src.indicators.risk_index import compute_composite_risk_index
 from src.visualization.risk_map import plot_risk_map, plot_county_ranking
+
+
+def _try_ingest(fn, config: dict, label: str) -> None:
+    """Run an optional ingestion step; warn and continue on auth/missing-key errors."""
+    try:
+        fn(config)
+    except (OSError, EnvironmentError, FileNotFoundError) as exc:
+        print(f"  [warn] Skipping {label}: {exc}")
 
 
 def load_config(config_path: str = "config.yaml") -> dict:
@@ -35,6 +46,9 @@ def run_pipeline(config: dict) -> gpd.GeoDataFrame:
     print("\n[1/6] Ingesting data...")
     counties_path = ingest_boundaries(config)
     rainfall_raw_path = ingest_rainfall(config)
+    ingest_population(config)
+    _try_ingest(ingest_dem, config, "DEM (set OPENTOPO_API_KEY to enable)")
+    _try_ingest(ingest_ndvi, config, "NDVI (set EARTHDATA_USERNAME/PASSWORD to enable)")
 
     # ── 2. Preprocessing ───────────────────────────────────────────────────────
     print("\n[2/6] Clipping raster to Kenya boundary...")

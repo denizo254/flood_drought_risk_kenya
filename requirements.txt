@@ -20,3 +20,6 @@ pyyaml==6.0.2
 # HTTP & utilities
 requests==2.32.3
 tqdm==4.67.1
+
+# NASA Earthdata access (MODIS NDVI)
+earthaccess==0.11.0

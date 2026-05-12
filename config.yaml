@@ -61,3 +61,18 @@ ingestion:
   month: 12
   timeout_seconds: 120
   chunk_size: 8192
+
+  # Kenya bounding box [west, south, east, north]
+  kenya_bbox: [33.9, -4.8, 42.0, 5.0]
+
+  # WorldPop Kenya 2020 population (no auth required)
+  worldpop_url: "https://data.worldpop.org/GIS/Population/Global_2000_2020/2020/KEN/ken_ppp_2020.tif"
+
+  # OpenTopography SRTM DEM (free API key — https://portal.opentopography.org/login)
+  # Override via env var OPENTOPO_API_KEY
+  opentopo_api_key: ""
+
+  # MODIS NDVI baseline: same calendar month averaged over these years
+  # Auth via env vars EARTHDATA_USERNAME + EARTHDATA_PASSWORD
+  # Free account: https://urs.earthdata.nasa.gov/users/new
+  ndvi_baseline_years: [2019, 2020, 2021, 2022, 2023]
