@@ -48,10 +48,13 @@ outputs/reports/*.csv
 !outputs/reports/.gitkeep
 
 # Processed intermediates (keep directory markers, ignore contents)
+# DVC manages the actual files via *.dvc pointer files
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/*.dvc
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/*.dvc
 
 # IDEs
 .vscode/

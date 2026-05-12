@@ -1,0 +1,5 @@
+outs:
+- md5: dcf4418632b7242a79e92312b1fa1c33
+  size: 7956163
+  hash: md5
+  path: kenya_counties.geojson

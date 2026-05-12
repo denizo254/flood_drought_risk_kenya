@@ -1,0 +1,5 @@
+outs:
+- md5: 5fe31748778aa53cb031079db447d4c9
+  size: 9610152
+  hash: md5
+  path: rainfall_dec_2025.tif

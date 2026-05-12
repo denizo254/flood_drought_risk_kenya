@@ -1,0 +1,5 @@
+outs:
+- md5: 4ca6ade5481b24dcbe02d3c29a29dab8
+  size: 90431
+  hash: md5
+  path: rainfall_dec_2025_kenya.tif
