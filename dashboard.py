@@ -19,14 +19,21 @@ st.set_page_config(
 RISK_COLORS = {"High": "#d73027", "Medium": "#f9a825", "Low": "#388e3c"}
 
 
+def _simplify(coords, p=3):
+    """Recursively round coordinate precision — reduces 7.9 MB GeoJSON ~70%."""
+    if coords and isinstance(coords[0], (int, float)):
+        return [round(c, p) for c in coords]
+    return [_simplify(c, p) for c in coords]
+
+
 @st.cache_data
 def load_data():
     df = pd.read_csv(ROOT / "outputs" / "reports" / "county_risk_report.csv")
     with open(ROOT / "data" / "raw" / "kenya_counties.geojson") as f:
         geojson = json.load(f)
-    # Stamp each feature's id with shapeName so featureidkey="id" works
     for feat in geojson["features"]:
         feat["id"] = feat["properties"]["shapeName"]
+        feat["geometry"]["coordinates"] = _simplify(feat["geometry"]["coordinates"])
     return df, geojson
 
 
