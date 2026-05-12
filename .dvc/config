@@ -2,4 +2,4 @@
     remote = localremote
     autostage = true
 ['remote "localremote"']
-    url = E:/dvc-remote/flood-drought-risk-kenya
+    url = gdrive://1qv4TEAGW0Ra0isIGAHibCcCec3LeJwew
