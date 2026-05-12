@@ -77,12 +77,8 @@ st.divider()
 map_col, rank_col = st.columns([3, 2])
 
 with map_col:
-    map_df = gdf.merge(
-        filtered[["shapeName", "composite_risk_index", "risk_category",
-                   "rainfall_zscore", "ndvi_deviation", "pop_density_norm"]],
-        on="shapeName",
-        how="inner",
-    )
+    # gdf is already the merged GeoDataFrame — just filter by selected categories
+    map_df = gdf[gdf["risk_category"].isin(selected_cats)].copy()
     fig_map = px.choropleth_mapbox(
         map_df,
         geojson=geojson,
