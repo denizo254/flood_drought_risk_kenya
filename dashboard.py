@@ -255,7 +255,13 @@ with st.expander("Full county data table", expanded=False):
         .reset_index(drop=True)
     )
     st.dataframe(
-        display.style.background_gradient(subset=["Risk Index"], cmap="RdYlGn_r"),
+        display,
         use_container_width=True,
         hide_index=True,
+        column_config={
+            "Risk Index": st.column_config.ProgressColumn(
+                "Risk Index", min_value=0, max_value=1, format="%.3f"
+            ),
+            "Category": st.column_config.TextColumn("Category"),
+        },
     )
